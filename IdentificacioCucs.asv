@@ -7,7 +7,7 @@ numImatges = length(imatges);
 fitxerCSV = readtable("WormDataA.csv");
 
 
-for i=1:1
+for i=1:4
     img = imread(fullfile(imatges(i).folder, imatges(i).name));
 
     if size(img, 3) == 3
@@ -23,7 +23,11 @@ for i=1:1
     imgNorm = mat2gray(imgFiltrada);
 
     % Creem una màscara per eliminar la zona blanca de la placa
-    mascPlaca = imgNorm > 0.1; % píxels més brillants que 10%
+    %mascPlaca = imgNorm > 0.1; % píxels més brillants que 10%
+    mascPlaca = imgNorm > graythresh(imgNorm) * 0.25; % píxels més brillants que 10%
+    mascPlaca = imfill(mascPlaca, 'holes');
+    mascPlaca = imopen(mascPlaca, strel('disk', 10));
+
 
     %figure;
     %imshow(~mascPlaca);
@@ -31,19 +35,24 @@ for i=1:1
     
     % Apliquem binarització adaptativa amb threshold perquè tenim
     % il·luminació desigual
-    th = adaptthresh(imgNorm, 0.5);
+    th = adaptthresh(imgNorm, 0.65);
     imgBinaria = imbinarize(imgNorm, th);
     imgBinaria = ~imgBinaria; % Cucs en blanc, fons en negre.
         
     % Aplicar màscares per eliminar soroll
-    mascErosio = imerode(mascPlaca, strel('disk', 4)); % Eliminem vorera de la màscara
+    mascErosio = imerode(mascPlaca, strel('square', 5)); % Eliminem vorera de la màscara
     imgBinaria(~mascErosio) = 0;
 
     % Detectem únicament cucs per eliminar la zona blanca.
-    cucs = ~imbinarize(imgNorm, 0.45);
+    cucs = ~imbinarize(imgNorm, 0.48);
     imgBinaria(~cucs) = 0;
-    
 
+    %% Apliquem post processat a les imatges per omplir possibles forats
+    imgBinaria = imclose(imgBinaria, strel('disk', 1));  % ajusta radi
+    imgBinaria = bwareaopen(imgBinaria, 2); % Eliminem possible soroll restant (petits píxels)
+    
+    
+    % Comparem imatge filtrada i binària per veure els resultats.
     figure;
     subplot(1,2,1);
     imshow(imgFiltrada);

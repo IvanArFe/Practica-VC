@@ -22,26 +22,27 @@ for i=1:1
     % Normalitzem la imatge a coordenades [0, 1]
     imgNorm = mat2gray(imgFiltrada);
 
-    % Creem una màscara per eliminar la zona de la placa
+    % Creem una màscara per eliminar la zona blanca de la placa
     mascPlaca = imgNorm > 0.1; % píxels més brillants que 10%
-    % Apliquem neteja a la màscara
-    mascPlaca = imfill(mascPlaca, "holes");
-    mascPlaca = imopen(mascPlaca, strel('disk', 10));
-    % Eliminar el rectangle blanc (zona molt clara)
-    zonaClara = imgFiltrada > 180;  % o imgNorm > 0.7 si és mat2gray
-    imgBinaria(zonaClara & mascPlaca) = 0;
 
-    imgMasc = imgFiltrada;
-    imgMasc(~mascPlaca) = 0; % Fons negre
-    figure;
-    imshow(imgMasc);
-    title('Zona màscara')
+    %figure;
+    %imshow(~mascPlaca);
+    %title('mascara a aplicar');
+    
     % Apliquem binarització adaptativa amb threshold perquè tenim
     % il·luminació desigual
-    th = adaptthresh(imgMasc, 0.3);
-    imgBinaria = imbinarize(imgMasc, th);
-    imgBinaria = ~imgBinaria;
-    imgBinaria(~mascPlaca) = 0;
+    th = adaptthresh(imgNorm, 0.5);
+    imgBinaria = imbinarize(imgNorm, th);
+    imgBinaria = ~imgBinaria; % Cucs en blanc, fons en negre.
+        
+    % Aplicar màscares per eliminar soroll
+    mascErosio = imerode(mascPlaca, strel('disk', 4)); % Eliminem vorera de la màscara
+    imgBinaria(~mascErosio) = 0;
+
+    % Detectem únicament cucs per eliminar la zona blanca.
+    cucs = ~imbinarize(imgNorm, 0.45);
+    imgBinaria(~cucs) = 0;
+    
 
     figure;
     subplot(1,2,1);

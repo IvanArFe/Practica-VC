@@ -1,0 +1,95 @@
+%% Lectura de dades 
+% Carreguem les imatges del directori pertinent (WormImages)
+imatges = dir(fullfile('WormImages', '*.tif'));
+numImatges = length(imatges);
+%for i = 1:length(imatges)
+%    subplot(4,6,i);
+%    img = imread(fullfile('WormImages', imatges(i).name));
+%    imshow(img);
+%    title(imatges(i).name, 'Interpreter','none');
+%end
+
+
+% Carreguem el fitxer .csv amb els resultats de classificació
+fitxerCSV = readtable("WormDataA.csv");
+%uitable('Data', table2cell(fitxerCSV), 'ColumnName', fitxerCSV.Properties.VariableNames);
+
+% Carpeta de sortida per a les comparacions
+outputFolder = 'Comparacions';
+
+% Crear la carpeta si no existeix
+if ~exist(outputFolder, 'dir')
+    mkdir(outputFolder);
+end
+
+%% Preprocessament de les imatges
+% Apliquem el preprocessat a cada imatge
+for i = 1:1%length(imatges)
+    imgRGB = imread(fullfile('WormImages', imatges(1).name));
+
+    % Convertim imatge a model HSV
+    imgHSV = rgb2hsv(imgRGB);
+    imgI = imgHSV(:,:,3); % Ens quedem amb la int
+    % Si la imatge no està en escala de grisos la transformem
+    if(size(img) == 3)
+        imgGris = rgb2gray(img);
+    else
+        imgGris = img;
+    end
+    
+    % Netegem la imatge (eliminar soroll i contrastar-la)
+    imgFiltrada = medfilt2(img); % Eliminem soroll amb filtre de mediana
+    imgContrast = imadjust(imgFiltrada); % Millorem el contrast
+    figure; imshow(imgContrast); impixelinfo;
+
+    % Apliquem binarització adaptativa (millor de cara a fons irregulars)
+    threshold = adaptthresh(imgContrast, 0.3, "ForegroundPolarity","dark");
+    imgBin = imbinarize(imgContrast, threshold);
+    
+    % Eliminem elements grans de la imatge
+    imgBin = imclearborder(imgBin);
+    imgBin = bwareafilt(imgBin, [50, 1000]);
+
+    % Un cop binaritzat, aplqiuem operacions morfològiques per omplir possibles forats
+    % i detectar millor el contorn dels cucs
+    imgBin = imfill(imgBin, 'holes');
+    %imgBin = imopen(imgBin, strel('disk', 2));
+    imgBin = imclose(imgBin, strel('disk', 2));
+    
+    % Detectem contorns dels cucs
+    imgContorns = edge(imgBin,"canny");
+    imgCont2 = edge(imgBin,"sobel");
+    
+    % Crear una figura invisible
+    f = figure('Visible','off', 'Position', [100, 100, 1000 800]);
+
+    % Mostrar les dues imatges (només per exportar)
+    subplot(2,2,1);
+    imshow(img);
+    title('Original', 'FontSize', 12);
+    axis off;
+
+    subplot(2,2,2);
+    imshow(imgBin);
+    title('Binaritzada', 'FontSize', 12);
+    axis off;
+
+    subplot(2,2,3);
+    imshow(imgContorns);
+    title('Contorns canny', 'FontSize', 12);
+    axis off;
+
+    subplot(2,2,4);
+    imshow(imgCont2);
+    title('Contorns sobel', 'FontSize', 12);
+    axis off
+
+    % Guardar la comparació
+    [~, name, ~] = fileparts(imatges(i).name);
+    filename = fullfile(outputFolder, [name '_comparacio.png']);
+    exportgraphics(f, filename);
+
+    % Tancar la figura per alliberar memòria
+    close(f);
+    
+end

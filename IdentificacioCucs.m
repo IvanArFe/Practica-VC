@@ -13,7 +13,7 @@ viusReals_tot = 0;
 mortsReals_tot = 0;
 
 % Apliquem per a totes les imatges del directori
-for i=1:numImatges
+for i=1:1
     % Carreguem cada imatge del directori
     img = imread(fullfile(imatges(i).folder, imatges(i).name));
     
@@ -90,7 +90,7 @@ for i=1:numImatges
     % Convertim a double i tenir rang [0,1], per millor resultat de les
     % funcions
     imgRGB = im2double(imgRGB);
-
+    imgBoundBox = imgRGB; % Còpiem per poder mostrar al subplot
     % Comptadors
     cVius = 0;
     cMorts = 0;
@@ -109,7 +109,10 @@ for i=1:numImatges
         % classifica com a viu o mort.
         boundBox = caract(j).BoundingBox;
         exc = caract(j).Eccentricity;
-      
+
+        % Dibuixem les bounding boxes sense classificació i poder representar-ho al subplot
+        imgBoundBox = insertShape(imgBoundBox, 'rectangle', boundBox, 'Color', [255 255 0], 'LineWidth', 1);
+
         if exc < ll_eccentricitat %relacio < ll_relacio &&
             estat = 'Viu';
             color = [0, 1, 0]; % Verd
@@ -168,8 +171,7 @@ for i=1:numImatges
     end
 
     %% Mostrem resultats en un subplot
-    % Comparem imatge filtrada i binària per veure els resultats.
-    %{
+    % Comparem imatge filtrada, binària, amb boundingboxes i classificada per veure els resultats.
     figure;
     subplot(2,2,1);
     imshow(imgFiltrada);
@@ -179,14 +181,17 @@ for i=1:numImatges
     imshow(imgBinaria);
     title('Binaria');
 
-    subplot(2,2,[3,4]);
+    subplot(2,2,3);
+    imshow(imgBoundBox);
+    title('BoundingBox')
+
+    subplot(2,2,4);
     imshow(imgRGB);
     titol = sprintf('Detectats: %d vius | %d morts\nReals: %d vius | %d morts', ...
                 cVius, cMorts, vius_reals, morts_reals);
     title(titol);
-    %}
-    
 end
+
 %% Càlcul de la precissió de la classificació
 totals_reals = viusReals_tot + mortsReals_tot;
 percPrecissio = ((viusTotals+mortsTotals) / totals_reals) * 100;

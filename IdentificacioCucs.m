@@ -7,7 +7,6 @@ numImatges = length(imatges);
 fitxerCSV = readtable("WormDataA.csv");
 
 % Comptadors globals per després calcular la precissió de classificació
-cucs_tot = 0;
 viusTotals = 0;
 mortsTotals = 0;
 viusReals_tot = 0;
@@ -166,7 +165,6 @@ for i=1:numImatges
         else
             fprintf("Classificació -> Imatge amb iguals vius que morts\n\n");
         end
-        cucs_tot = cucs_tot + vius_reals + morts_reals;
     end
 
     %% Mostrem resultats en un subplot

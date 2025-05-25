@@ -68,8 +68,8 @@ for i=1:numImatges
     % possiblement trencats. Primer de forma general i després en concret
     % linealment.
     imgBinaria = imclose(imgBinaria, strel('disk', 1)); 
-    imgBinaria = imclose(imgBinaria, strel('line', 4, 45)); 
-    imgBinaria = imclose(imgBinaria, strel('line', 4, 0));
+    imgBinaria = imclose(imgBinaria, strel('line', 2, 45)); 
+    imgBinaria = imclose(imgBinaria, strel('line', 2, 0));
 
     % Eliminem possible soroll restant (petits píxels)
     imgBinaria = bwareaopen(imgBinaria, 100); 
@@ -97,8 +97,8 @@ for i=1:numImatges
     cMorts = 0;
 
     % Llindars
-    ll_eccentricitat = 0.9962;
-    ll_AreaMin = 70;
+    ll_eccentricitat = 0.9955;
+    ll_AreaMin = 80;
         
     % Recorrem cada cuc de la imatge
     for j = 1:nCucs
@@ -150,8 +150,8 @@ for i=1:numImatges
         morts_reals = fitxerCSV{idx, "x_DeadWorms"};
         
         % Acumulem en les diferents imatges per poder realitzar el càlcul de precissió
-        viusTotals = viusTotals + cVius;
-        mortsTotals = mortsTotals + cMorts;
+        viusTotals = viusTotals + min(cVius, vius_reals);
+        mortsTotals = mortsTotals + min(cMorts, morts_reals);
         viusReals_tot = vius_reals + viusReals_tot;
         mortsReals_tot = morts_reals + mortsReals_tot;
         
@@ -191,6 +191,5 @@ for i=1:numImatges
 end
 %% Càlcul de la precissió de la classificació
 totals_reals = viusReals_tot + mortsReals_tot;
-correctes = min(viusTotals, viusReals_tot) + min(mortsTotals, mortsReals_tot);
-percentatge = (correctes / totals_reals) * 100;
-fprintf("Percentatge de classificació correcta: %.2f%%\n", percentatge);
+percPrecissio = ((viusTotals+mortsTotals) / totals_reals) * 100;
+fprintf("Percentatge de classificació correcta: %.2f%%\n", percPrecissio);

@@ -5,15 +5,22 @@ numImatges = length(imatges);
 
 % Carreguem el fitxer .csv amb els resultats de classificació
 fitxerCSV = readtable("WormDataA.csv");
+
+% Comptadors globals per després calcular la precissió de classificació
 cucs_tot = 0;
 viusTotals = 0;
 mortsTotals = 0;
 viusReals_tot = 0;
 mortsReals_tot = 0;
 
+% Apliquem per a totes les imatges del directori
 for i=1:numImatges
+    % Carreguem cada imatge del directori
     img = imread(fullfile(imatges(i).folder, imatges(i).name));
-
+    
+    %% Preprocessat de les imatges
+    % Transformem les imatges a escala de grisos per si hi ha alguna a
+    % color (en cas de futures probes també).
     if size(img, 3) == 3
         imgGris = im2gray(img);
     else
@@ -27,56 +34,62 @@ for i=1:numImatges
     imgNorm = mat2gray(imgFiltrada);
 
     % Creem una màscara per eliminar la zona blanca de la placa
-    %mascPlaca = imgNorm > 0.1; % píxels més brillants que 10%
-    mascPlaca = imgNorm > graythresh(imgNorm) * 0.20; % píxels més brillants que 10%
+    % Ens quedem amb els píxels amb intensitat superior al 20% del llindar
+    % que retorna graythresh (mètode Otsu). Per obtenir un millor
+    % enfocament dels cucs.
+    mascPlaca = imgNorm > graythresh(imgNorm) * 0.20;
     mascPlaca = imfill(mascPlaca, 'holes');
     mascPlaca = imopen(mascPlaca, strel('disk', 10));
-
-    %figure;
-    %imshow(~mascPlaca);
-    %title('mascara a aplicar');
     
-    % Apliquem binarització adaptativa amb threshold perquè tenim
+    % Apliquem binarització adaptativa amb threshold, a nivell de píxel, perquè tenim
     % il·luminació desigual
     th = adaptthresh(imgNorm, 0.65);
     imgBinaria = imbinarize(imgNorm, th);
-    imgBinaria = ~imgBinaria; % Cucs en blanc, fons en negre.
+    imgBinaria = ~imgBinaria; % Invertim la imatge -> cucs en blanc, fons en negre.
         
     % Aplicar màscares per eliminar soroll
     mascErosio = imerode(mascPlaca, strel('square', 5)); % Eliminem vorera de la màscara
-    imgBinaria(~mascErosio) = 0;
+    imgBinaria(~mascErosio) = 0; % Eliminiem qualsevol pixel fora de la màscara
 
-    % Detectem únicament cucs per eliminar la zona blanca.
+    % Detectem únicament cucs per eliminar la zona blanca mitjançant una
+    % nova màscara.
     cucs = ~imbinarize(imgNorm, 0.48);
     imgBinaria(~cucs) = 0;
 
     %% Apliquem post processat a les imatges per eliminar possible soroll
-    %imgBinaria = imerode(imgBinaria, strel('line', 1, 0));
-    %imgBinaria = imerode(imgBinaria, strel('line', 1, 45));
-    imgBinaria = imerode(imgBinaria, strel('disk', 1));
-    imgBinaria = bwmorph(imgBinaria, 'bridge');
-    imgBinaria = imclose(imgBinaria, strel('disk', 1)); % Suavitzem contorns i omplim possibles forats petits
-    imgBinaria = imclose(imgBinaria, strel('line', 4, 45)); % Suavitzem contorns i omplim possibles forats petits
-    imgBinaria = imclose(imgBinaria, strel('line', 4, 0)); % Suavitzem contorns i omplim possibles forats petits
-    imgBinaria = bwareaopen(imgBinaria, 100); % Eliminem possible soroll restant (petits píxels)
+    % Primer apliquem una erosió lineal per cucs en diagonal i horitzonal
+    imgBinaria = imerode(imgBinaria, strel('line', 2, 0));
+    imgBinaria = imerode(imgBinaria, strel('line', 2, 45));
 
-    
-    
+    % Reconnectem píxels molt propers (possibles cucs trencats)
+    imgBinaria = bwmorph(imgBinaria, 'bridge');
+
+    % Apliquem closing per intentar juntar píxels més separats de cucs
+    % possiblement trencats. Primer de forma general i després en concret
+    % linealment.
+    imgBinaria = imclose(imgBinaria, strel('disk', 1)); 
+    imgBinaria = imclose(imgBinaria, strel('line', 4, 45)); 
+    imgBinaria = imclose(imgBinaria, strel('line', 4, 0));
+
+    % Eliminem possible soroll restant (petits píxels)
+    imgBinaria = bwareaopen(imgBinaria, 100); 
+        
     %% Etiquetem cucs i extraiem característiques
     [etiquetaImg, nCucs] = bwlabel(imgBinaria);
     % Extraeiem característiques, principalment l'excentricitat per saber
     % com de recte o corbat està un cuc.
-    caract = regionprops(etiquetaImg, 'BoundingBox', 'Area', 'Eccentricity', 'Solidity', 'Perimeter', ...
-        'PixelList');
+    caract = regionprops(etiquetaImg, 'BoundingBox', 'Area', 'Eccentricity', 'Perimeter');
     
-    % Convertim la imatge a RGB per poder representar colors
+    % Convertim la imatge a RGB per poder representar colors (per
+    % representar boundingbox)
     if size(img, 3) == 1
         imgRGB = cat(3, img, img, img);
     else
         imgRGB = img;
     end
 
-    % Convertim a double
+    % Convertim a double i tenir rang [0,1], per millor resultat de les
+    % funcions
     imgRGB = im2double(imgRGB);
 
     % Comptadors
@@ -84,28 +97,21 @@ for i=1:numImatges
     cMorts = 0;
 
     % Llindars
-    ll_eccentricitat = 0.9965;
-    ll_AreaMin = 110; % Valor comprovat amb caract(j).Area de cada cuc. 347
-    ll_sol = 0.945;
-    ll_relacio = 0.485;  % nou llindar per la distància euclidiana
-    
+    ll_eccentricitat = 0.9962;
+    ll_AreaMin = 70;
+        
     % Recorrem cada cuc de la imatge
     for j = 1:nCucs
+        % Extraiem l'àrea de cada cuc, si no arriba al mínim es descarta
         if caract(j).Area < ll_AreaMin
             continue;
         end
-
+        % Extraiem la boundingbox i l'excentricitat i segons llindar es
+        % classifica com a viu o mort.
         boundBox = caract(j).BoundingBox;
         exc = caract(j).Eccentricity;
-        sol = caract(j).Solidity;
-
-        % Calcular relació distància euclidiana vs. longitud del cuc
-        pixs = caract(j).PixelList;
-        dist = sqrt(sum((pixs(1,:) - pixs(end,:)).^2));
-        long = caract(j).Perimeter;
-        relacio = dist / long;
-
-        if exc < ll_eccentricitat %relacio < ll_relacio &&  %&& sol < ll_sol
+      
+        if exc < ll_eccentricitat %relacio < ll_relacio &&
             estat = 'Viu';
             color = [0, 1, 0]; % Verd
             cVius = cVius + 1;
@@ -128,28 +134,28 @@ for i=1:numImatges
     nomImg = imatges(i).name;
     
     % Extraiem la columna de nom i estat
-    %fitxerCSV.Properties.VariableNames % Per identificar com matlab ha
-    %anomenat les columnes
-
-    nomsAmbEstat = fitxerCSV{:, "File_Status"};  % Accedim com a cel·la
+    % fitxerCSV.Properties.VariableNames % Per identificar com matlab ha anomenat les columnes
+    nomsComplets = fitxerCSV{:, "File_Status"};  % Accedim com a cel·la
     
-    % Separem noms de fitxer (ex: wormA01.tif) i status (ex: alive)
-    nomsFitxer = cellfun(@(s) strsplit(s, ","), nomsAmbEstat, 'UniformOutput', false);
-    nomsFitxer = cellfun(@(x) x{1}, nomsFitxer, 'UniformOutput', false);  % Nom només
+    % Separem nom de l'status
+    nomsFitxer = cellfun(@(s) strsplit(s, ","), nomsComplets, 'UniformOutput', false);
+    nomsImatges = cellfun(@(x) x{1}, nomsFitxer, 'UniformOutput', false);  % Nom només
     
     % Cerquem la fila que coincideix amb el nom de la imatge
-    idx = find(strcmp(nomsFitxer, nomImg));
+    idx = find(strcmp(nomsImatges, nomImg));
 
     % Si existeix la fila busquem els valors
     if ~isempty(idx)
         vius_reals = fitxerCSV{idx, "x_AliveWorms"};
         morts_reals = fitxerCSV{idx, "x_DeadWorms"};
-
+        
+        % Acumulem en les diferents imatges per poder realitzar el càlcul de precissió
         viusTotals = viusTotals + cVius;
         mortsTotals = mortsTotals + cMorts;
         viusReals_tot = vius_reals + viusReals_tot;
         mortsReals_tot = morts_reals + mortsReals_tot;
-
+        
+        % Printem al terminal informació sobre la imatge i la classificació
         fprintf("Imatge: %s:\n", nomImg);
         fprintf("Vius detectats: %d | Esperats: %d\n", cVius, vius_reals);
         fprintf("Morts detectats: %d | Esperats: %d\n", cMorts, morts_reals);
@@ -160,10 +166,10 @@ for i=1:numImatges
         else
             fprintf("Classificació -> Imatge amb iguals vius que morts\n\n");
         end
-        cucs_tot = vius_reals + morts_reals;
+        cucs_tot = cucs_tot + vius_reals + morts_reals;
     end
 
-    %% Mostrem resultats
+    %% Mostrem resultats en un subplot
     % Comparem imatge filtrada i binària per veure els resultats.
     %{
     figure;
@@ -183,7 +189,8 @@ for i=1:numImatges
     %}
     
 end
+%% Càlcul de la precissió de la classificació
 totals_reals = viusReals_tot + mortsReals_tot;
 correctes = min(viusTotals, viusReals_tot) + min(mortsTotals, mortsReals_tot);
 percentatge = (correctes / totals_reals) * 100;
-fprintf("\nPercentatge de classificació correcta: %.2f%%\n", percentatge);
+fprintf("Percentatge de classificació correcta: %.2f%%\n", percentatge);
